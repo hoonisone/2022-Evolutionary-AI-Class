@@ -23,5 +23,17 @@
     <Text Include="Data(0-1Knapsack).txt">
       <Filter>리소스 파일</Filter>
     </Text>
+    <Text Include="tournament history.txt">
+      <Filter>리소스 파일</Filter>
+    </Text>
+    <Text Include="tournament population.txt">
+      <Filter>리소스 파일</Filter>
+    </Text>
+    <Text Include="roulette history.txt">
+      <Filter>리소스 파일</Filter>
+    </Text>
+    <Text Include="roulette population.txt">
+      <Filter>리소스 파일</Filter>
+    </Text>
   </ItemGroup>
 </Project>

@@ -8,6 +8,17 @@
 #include <tuple>
 using namespace std;
 
+struct GenerationState {
+	float maxFitness;
+	float minFitness;
+	float avgFitness;
+
+	GenerationState(float maxFitness, float minFitness, float avgFitness) {
+		this->maxFitness = maxFitness;
+		this->minFitness = minFitness;
+		this->avgFitness = avgFitness;
+	}
+};
 
 vector<pair<float, float>> LoadData() {
 	vector<pair<float, float>> data;
@@ -35,22 +46,35 @@ class EvolutionSearch {
 public:
 	int crossPoint;
 	float mutationProbability;
+	float crossOverProbability;
+	int sampleNum;
 
-	EvolutionSearch(int sampleNum, int crossPoint = 1, float mutationProbability = 0.01) {
+	EvolutionSearch(int sampleNum, int crossPoint = 1, float mutationProbability = 0.01, float crossOverProbability = 0.9) :
+		sampleNum(sampleNum), crossPoint(crossPoint),
+		mutationProbability(mutationProbability), 
+		crossOverProbability(crossOverProbability) {}
+
+	void Init() {
 		population = MakeNewSamples(sampleNum);
-		this->crossPoint = crossPoint;
-		this->mutationProbability = mutationProbability;
-
+		AddCurState(); ///// 아직 fitness 계산 불가
 	}
+
 	void NextGeneration() {
+		/* 다음 세대로 진화
+		*/
+
 		//cout << "Selection" << endl;
 		Selection(population);
 
 		//cout << "CrossOver" << endl;
-		CrossOver(population, crossPoint); // cross point = 3
+		CrossOver(population, crossPoint, crossOverProbability); // cross point = 3
 
 		//cout << "Mutation" << endl;
 		Mutation(population, mutationProbability); // mutation probability = 0.01
+		
+		// State 저장
+		AddCurState();
+
 		generation++;
 	}
 	void PrintPopulation() {
@@ -72,19 +96,91 @@ public:
 		tuple<float, float, float, int, int> statistic = FitnessStatistic(population);
 		cout << "Generation[" << generation << "]" << endl;
 		cout << "  * Max: " << get<0>(statistic) << endl;
-		cout << "  * Avg: " << get<1>(statistic) << endl;
-		cout << "  * Min: " << get<2>(statistic) << endl;
+		cout << "  * Min: " << get<1>(statistic) << endl;
+		cout << "  * Avg: " << get<2>(statistic) << endl;
 	}
 
 	void PrintState2() {
 		tuple<float, float, float, int, int> statistic = FitnessStatistic(population);
-		cout << "Generation[" << generation << "]: " << "Max: " << get<0>(statistic) << ", Avg: " << get<1>(statistic) << ", Min : " << get<2>(statistic) << endl;
+		cout << "Generation[" << generation << "]: " << "Max: " << get<0>(statistic) << ", Min : " << get<1>(statistic) << ", Avg: " << get<2>(statistic) << endl;
 
+	}
+
+	// State
+	vector<float> GetMaxFitnessList() {
+		vector<float> values;
+		for (int i = 0; i < stateList.size(); i++)
+		{
+			values.push_back(stateList[i].maxFitness);
+		}
+		return values;
+	}
+	vector<float> GetMinFitnessList() {
+		vector<float> values;
+		for (int i = 0; i < stateList.size(); i++)
+		{
+			values.push_back(stateList[i].minFitness);
+		}
+		return values;
+	}
+	vector<float> GetAvgFitnessList() {
+		vector<float> values;
+		for (int i = 0; i < stateList.size(); i++)
+		{
+			values.push_back(stateList[i].avgFitness);
+		}
+		return values;
+	}
+
+
+
+	void StoreState(string path) {
+		ofstream file(path); // example.txt 파일을 연다. 없으면 생성. 
+		if (file.is_open()) {
+			for (size_t i = 0; i < stateList.size(); i++)
+			{
+				GenerationState state = stateList[i];
+				file << state.maxFitness << " " << state.minFitness << " " << state.avgFitness << endl;
+			}
+			file.close(); // 열었던 파일을 닫는다. 
+		}
+		else {
+			cout << "Unable to open file";
+		}
+	}
+
+	void StorePopulationAndFitness(string path) {
+		
+		ofstream file(path); // example.txt 파일을 연다. 없으면 생성. 
+		if (file.is_open()) {
+			vector<float> maxFitnessList = GetMaxFitnessList();
+			for (int i = 0; i < population.size(); i++)
+			{
+				vector<bool> sample = population[i];
+				file << ToString(sample) << "," << Fitness(sample) << endl;
+			}
+			file.close(); // 열었던 파일을 닫는다. 
+		}
+		else {
+			cout << "Unable to open file";
+		}
 	}
 
 protected:
 	int generation; // 유전자 조합 횟수
-	vector<vector<bool>> population;
+	vector<vector<bool>> population; // 현재 population
+
+	// State
+	vector<GenerationState> stateList; // 세대 별 state
+	void AddCurState() {
+		tuple<float, float, float, int, int> statistic = FitnessStatistic(population);
+		float maxFitness = get<0>(statistic);
+		float avgFitness = get<1>(statistic);
+		float minFitness = get<2>(statistic);
+
+		stateList.push_back(GenerationState(maxFitness, minFitness, avgFitness));
+	}
+
 
 	// Utility
 	vector<int> GetIndexList(int size) {
@@ -119,6 +215,14 @@ protected:
 	float GetRandProbability() {
 		return rand() / (double)RAND_MAX; // 랜덤 확률 생성 (0 ~ 1)
 	}
+	string ToString(vector<bool> sample) {
+		string s = "";
+		for (int i = 0; i < sample.size(); i++)
+		{
+			s += sample[i] ? "1" : "0";
+		}
+		return s;
+	}
 
 	// Init
 	//virtual vector<bool> MakeNewSample1() = 0;
@@ -146,11 +250,12 @@ protected:
 
 	// fitness
 	tuple<float, float, float, int, int> FitnessStatistic(vector<vector<bool>>& samples) {
-		// 현재 fitness의 max, avg, min, maxIdx, minIdx 반환
+		// 현재 fitness의 max, min, avg, maxIdx, minIdx 반환
 		vector<float> fitnessList = GetFitnessList(samples);
 		float acc = 0;
 		float max = 0;
 		float min = numeric_limits<float>::max();
+
 		int maxIdx, minIdx;
 		for (int i = 0; i < fitnessList.size(); i++)
 		{
@@ -166,7 +271,7 @@ protected:
 			}
 		}
 		float avg = acc / fitnessList.size();
-		return make_tuple(max, avg, min, maxIdx, minIdx);
+		return make_tuple(max, min, avg, maxIdx, minIdx);
 	}
 	vector<float> GetAccFitnessRatioList(vector<vector<bool>>& samples) {
 		vector<float> fitnessList = GetAccFitnessList(samples);
@@ -309,37 +414,70 @@ protected:
 			}
 		}
 	}
-	void CrossOver(vector<vector<bool>>& samples, int pointNum) {
-		vector<int> idxList = GetIndexList(samples.size());
-		while (0 < idxList.size()) {
-			int idx1 = rand() % idxList.size();
-			vector<bool>& sample1 = samples[idxList[idx1]];
-			idxList.erase(idxList.begin() + idx1);
-			int idx2 = rand() % idxList.size();
-			vector<bool>& sample2 = samples[idxList[idx2]];
-			idxList.erase(idxList.begin() + idx2);
-			CrossOver(sample1, sample2, pointNum);
+
+	template <typename T> vector<pair<T, T>> MakePair(vector<T> list) {
+		/* list의 원소들을 두 개씩 묶어 리스트로 반환.*/
+		vector<pair<T, T>> pairList; // 빈 원소 쌍 리스트 생성
+
+		for (int i = 0; i < list.size()/2; i++)
+		{
+			// 무작위로 하나 뽑고 제거1
+			int idx1 = rand() % list.size(); // 인덱스 지정
+			T val1 = list[idx1]; // 값 지정
+			list.erase(list.begin() + idx1); // 리스트에서 제거
+
+			// 무작위로 하나 뽑고 제거2
+			int idx2 = rand() % list.size();
+			T val2 = list[idx2];
+			list.erase(list.begin() + idx2);
+			
+			// 쌍 추가
+			pairList.push_back(make_pair(val1, val2));
+		}
+		return pairList;
+	}
+
+	void CrossOver(vector<vector<bool>>& samples, int pointNum, float crossOverProbability) {
+		vector<int> idxList = GetIndexList(samples.size()); // population의 sample 별 idx list 생성
+		vector<pair<int, int>> idxPairList = MakePair(idxList); // 2 개씩 쌍 생성
+
+		for (int i = 0; i < idxPairList.size(); i++)
+		{
+			if (GetRandProbability() <= crossOverProbability) { // crossOverProbability에 따라 수행
+				// idx 지정
+				int idx1 = idxPairList[i].first;
+				int idx2 = idxPairList[i].second;
+
+				// sample 지정
+				vector<bool>& sample1 = samples[idx1];
+				vector<bool>& sample2 = samples[idx2];
+
+				// crossover 수행
+				CrossOver(sample1, sample2, pointNum);
+			}
 		}
 	}
 
-	vector<int> RandomChoose(vector<int> list, int num) {
-		vector<int> points;
+	template <typename T> vector<T> RandomChoose(vector<T> list, int num) {
+		/* list에서 무작위로 num개의 원소를 뽑아 리스트로 반환*/
+
+		vector<T> selectedList; // 빈 선택된 원소 리스트 생성
+		
 		for (int i = 0; i < num; i++)
 		{
-			int point = rand() % list.size();
-			points.push_back(list[point]);
-			list.erase(list.begin() + point);
+			int point = rand() % list.size(); // 무작위 인덱스 지정
+			selectedList.push_back(list[point]); // 원소 추가
+			list.erase(list.begin() + point); // 원소 삭제
 		}
-		return points;
+		return selectedList;
 	}
-
 };
 
 class  KnapsackProblemSearch : public EvolutionSearch {
 public:
 	KnapsackProblemSearch(
-		vector<pair<float, float>> data, int sampleNum, int crossPoint = 1, float mutationProbability = 0.01) : EvolutionSearch(sampleNum, crossPoint, mutationProbability) {
-		this->data = data;
+		vector<pair<float, float>> data, int sampleNum, int crossPoint = 1, float mutationProbability = 0.01, float crossOverProbability = 0.9) : 
+			data(data), EvolutionSearch(sampleNum, crossPoint, mutationProbability, crossOverProbability) {
 	}
 
 
@@ -358,7 +496,7 @@ protected:
 class RouletteEvolution :public KnapsackProblemSearch {
 public:
 	RouletteEvolution(
-		vector<pair<float, float>> data, int sampleNum, int crossPoint = 1, float mutationProbability = 0.01) : KnapsackProblemSearch(data, sampleNum, crossPoint, mutationProbability) {
+		vector<pair<float, float>> data, int sampleNum, int crossPoint = 1, float mutationProbability = 0.01, float crossOverProbability = 0.9) : KnapsackProblemSearch(data, sampleNum, crossPoint, mutationProbability, crossOverProbability) {
 		data = LoadData();
 	}
 
@@ -385,7 +523,7 @@ protected:
 class TournamentEvolution :public KnapsackProblemSearch {
 public:
 
-	TournamentEvolution(vector<pair<float, float>> data, int sampleNum, int crossPoint = 1, float mutationProbability = 0.01, int tau = 5) : KnapsackProblemSearch(data, sampleNum, crossPoint, mutationProbability) {
+	TournamentEvolution(vector<pair<float, float>> data, int sampleNum, int crossPoint = 1, float mutationProbability = 0.01, float crossOverProbability = 0.9, int tau = 5) : KnapsackProblemSearch(data, sampleNum, crossPoint, mutationProbability, crossOverProbability) {
 		this->data = data;
 		this->tau = tau;
 	}
@@ -412,6 +550,9 @@ protected:
 };
 
 void GridyAlgorithm() {
+	/* Gridy한 방식으로 weight당 profit 효율이 가장 높은 것 부터 차례대로 담는다.
+	* 
+	*/
 	vector<pair<float, float>> data = LoadData();
 
 	// weight 당 profit이 높은 순으로 정렬
@@ -432,7 +573,7 @@ void GridyAlgorithm() {
 	float weight = 0;
 	float profit = 0;
 	int i = 0;
-	while (weight < 280123) {
+	while (weight < 280123) { // threshold를 살짝 넘게 되는 건 무시..
 		int idx = rank[rank.size() - 1 - i].second;
 		weight += data[idx].first;
 		profit += data[idx].second;
@@ -444,7 +585,8 @@ void GridyAlgorithm() {
 void RouletteEvolutionTest() {
 	srand(time(NULL));
 	vector<pair<float, float>> data = LoadData();
-	RouletteEvolution evolution = RouletteEvolution(data, 100, 3, 0.01);
+	RouletteEvolution evolution = RouletteEvolution(data, 100, 3, 0.1, 0.9);
+	evolution.Init();
 
 	evolution.PrintState2();
 	for (int i = 0; i < 100; i++)
@@ -452,13 +594,17 @@ void RouletteEvolutionTest() {
 		evolution.NextGeneration();
 		evolution.PrintState2();
 	}
+
+	evolution.StoreState("roulette history.txt");
+	evolution.StorePopulationAndFitness("roulette population.txt");
 }
 
 
 void TournamentEvolutionTest() {
 	srand(time(NULL));
 	vector<pair<float, float>> data = LoadData();
-	TournamentEvolution evolution = TournamentEvolution(data, 100, 3, 0.01, 5);
+	TournamentEvolution evolution = TournamentEvolution(data, 100, 2, 0.01, 0.9, 2);
+	evolution.Init();
 
 	evolution.PrintState2();
 	for (int i = 0; i < 100; i++)
@@ -466,12 +612,17 @@ void TournamentEvolutionTest() {
 		evolution.NextGeneration();
 		evolution.PrintState2();
 	}
+
+	evolution.StoreState("tournament history.txt");
+	evolution.StorePopulationAndFitness("tournament population.txt");
 }
 
 int main(void) {
-	//GridyAlgorithm();
-	//RouletteEvolutionTest();
-	TournamentEvolutionTest();
+	//GridyAlgorithm(); // baseline
+	
+	RouletteEvolutionTest(); // Roulette
+
+	//TournamentEvolutionTest(); // Tournament
 }
 
 

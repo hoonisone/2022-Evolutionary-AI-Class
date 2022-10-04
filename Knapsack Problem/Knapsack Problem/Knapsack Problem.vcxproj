@@ -143,6 +143,10 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="Data(0-1Knapsack).txt" />
+    <Text Include="roulette history.txt" />
+    <Text Include="roulette population.txt" />
+    <Text Include="tournament history.txt" />
+    <Text Include="tournament population.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

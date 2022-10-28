@@ -46,15 +46,17 @@ struct GenerationState {
 
 class EvolutionSearch {
 public:
+	int overlapNum;
 	int sampleNum;
 	float mutationProbability;
 	float crossOverProbability;
 
 
-	EvolutionSearch(int sampleNum, float mutationProbability = 0.01, float crossOverProbability = 0.9) :
+	EvolutionSearch(int sampleNum, float mutationProbability, float crossOverProbability, int overlapNum) :
 		sampleNum(sampleNum),
 		mutationProbability(mutationProbability),
-		crossOverProbability(crossOverProbability) {}
+		crossOverProbability(crossOverProbability),
+		overlapNum(overlapNum) {}
 
 	void Init() {
 		population = MakeNewPopulation(sampleNum);
@@ -66,6 +68,11 @@ public:
 		*/
 
 		//cout << "Selection" << endl;
+
+		vector<vector<bool>> eliteList =  GetTopNIndividuals(population, overlapNum);
+		//cout << Fitness(eliteList[0], population);
+		//cout << Fitness(eliteList[1], population);
+
 		Selection(population);
 
 		//cout << "SimpleRandomCrossOver" << endl;
@@ -74,11 +81,43 @@ public:
 		//cout << "Mutation" << endl;
 		Mutation(population, mutationProbability); // mutation probability = 0.01
 
+		for (int i = 0; i < eliteList.size(); i++)
+		{
+			population[i] = eliteList[i];
+		}
+
 		// State 저장
 		AddCurState();
 
 		generation++;
 	}
+
+
+	vector<vector<bool>> GetTopNIndividuals(vector<vector<bool>> population, int n) {
+		vector<vector<bool>> topIndivisuals;
+		vector<vector<bool>> sortedPupulation = SortByFitness(population);
+		for (int i = 0; i < n; i++)
+		{
+			topIndivisuals.push_back(sortedPupulation[i]);
+		}
+		return topIndivisuals;
+	}
+	vector<vector<bool>> SortByFitness(vector<vector<bool>> population) {
+		vector<float> fitnessList = GetFitnessList(population);
+		vector<pair<float, int>> idx_fitness;
+		for (int i = 0; i < fitnessList.size(); i++)
+		{
+			idx_fitness.push_back(make_pair(fitnessList[i], i));
+		}
+		sort(idx_fitness.begin(), idx_fitness.end(), greater<>());
+		vector<vector<bool>> sortedPopultion;
+		for (int i = 0; i < idx_fitness.size(); i++)
+		{
+			sortedPopultion.push_back(population[idx_fitness[i].second]);
+		}
+		return sortedPopultion;
+	}
+
 	void PrintPopulation() {
 		Print(population);
 	}
@@ -159,7 +198,7 @@ public:
 			for (int i = 0; i < population.size(); i++)
 			{
 				vector<bool> sample = population[i];
-				file << ToString(sample) << "," << Fitness(sample) << endl;
+				file << ToString(sample) << "," << Fitness(sample, population) << endl;
 			}
 			file.close(); // 열었던 파일을 닫는다. 
 		}
@@ -299,11 +338,11 @@ protected:
 		vector<float> fitnessList;
 		for (int i = 0; i < samples.size(); i++)
 		{
-			fitnessList.push_back(Fitness(samples[i]));
+			fitnessList.push_back(Fitness(samples[i], samples));
 		}
 		return fitnessList;
 	}
-	virtual float Fitness(vector<bool>& sample) = 0;
+	virtual float Fitness(vector<bool>& sample, vector<vector<bool>>& population) = 0;
 
 
 	// Print
@@ -365,7 +404,7 @@ protected:
 			{
 				int participantIdx = participantIdxList[j];
 				vector<bool> sample = copy[participantIdx];
-				result.push_back(make_pair(Fitness(sample), participantIdx));
+				result.push_back(make_pair(Fitness(sample, samples), participantIdx));
 			}
 			sort(result.begin(), result.end());
 			int winnerIdx = result[result.size() - 1].second;
@@ -484,12 +523,12 @@ protected:
 
 class FourMaxProblemSearch : public EvolutionSearch {
 public:
-	FourMaxProblemSearch(int populationSIze, float mutationProbability, float crossOverProbability) :
-		EvolutionSearch(populationSIze, mutationProbability, crossOverProbability) {}
+	FourMaxProblemSearch(int populationSIze, float mutationProbability, float crossOverProbability, int overlapNum) :
+		EvolutionSearch(populationSIze, mutationProbability, crossOverProbability, overlapNum) {}
 
 private:
 	int individualSize = 50;
-
+	int threshold = 20;
 	// EvolutionSearch을(를) 통해 상속됨
 	vector<bool> MakeIndividualHandler() override
 	{
@@ -503,6 +542,7 @@ private:
 
 	void CrossOverHandler(vector<bool>& s1, vector<bool>& s2) override
 	{
+		
 		for (int i = 25; i < 50; i++)
 		{
 			bool temp = s1[i];
@@ -511,12 +551,37 @@ private:
 		}
 	}
 
-	float Fitness(vector<bool>& sample) override
+	float Fitness(vector<bool>& sample, vector<vector<bool>>& population) override
 	{
 		vector<bool> left, right;
 		left.assign(sample.begin(), sample.begin() + 25);
 		right.assign(sample.begin() + 25, sample.begin() + 50);
-		return f(left) + f(right);
+		float penalty = DistancePenalty(sample, population, threshold);
+		//penalty = (penalty == 0) ? (0.1f) : penalty; // zero divide 방지
+		return (f(left) + f(right))/ (1 + penalty);
+	}
+
+	static float DistancePenalty(vector<bool>& sample, vector<vector<bool>> & population, int threshold) {
+
+		float penalty = 0;
+
+		for (int i = 0; i < population.size(); i++)
+		{
+			float distance = HammingDistance(sample, population[i]);
+			
+			penalty += (distance < threshold) ? 1 - (distance / threshold) : 0;
+		}
+		return penalty/population.size();
+	}
+
+	static float HammingDistance(vector<bool>& sample1, vector<bool>& sample2) {
+		int distance = 0;
+
+		for (int i = 0; i < sample1.size(); i++)
+		{
+			distance += (sample1[i] != sample2[i]) ? 1 : 0;
+		}
+		return distance;
 	}
 
 	static float u(vector<bool> sample) {
@@ -542,10 +607,10 @@ private:
 
 int main(void) {
 	int seed = 0;
-	int generation = 30; // 30으로도 충분히 수렴
+	int generation = 30; // 50에서 거의 수렴
 	
 	srand(seed);
-	FourMaxProblemSearch evolution = FourMaxProblemSearch(100, 0.01, 0.9);
+	FourMaxProblemSearch evolution = FourMaxProblemSearch(100, 0.01, 0.5, 20);
 	evolution.Init();
 
 	evolution.PrintState2();
